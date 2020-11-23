@@ -13,6 +13,7 @@
 //! `openssl` crate.
 #![warn(missing_docs)]
 
+use futures::{AsyncRead, AsyncWrite};
 use openssl::ssl::{
     self, ConnectConfiguration, ErrorCode, MidHandshakeSslStream, ShutdownResult, SslAcceptor,
     SslRef,
@@ -24,7 +25,6 @@ use std::future::Future;
 use std::io::{self, Read, Write};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// Asynchronously performs a client-side TLS handshake over the provided stream.
 pub async fn connect<S>(
@@ -98,12 +98,9 @@ where
     S: AsyncRead + Unpin,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.with_context(|ctx, stream| {
-            let mut buf = ReadBuf::new(buf);
-            match stream.poll_read(ctx, &mut buf)? {
-                Poll::Ready(()) => Ok(buf.filled().len()),
-                Poll::Pending => Err(io::Error::from(io::ErrorKind::WouldBlock)),
-            }
+        self.with_context(|ctx, stream| match stream.poll_read(ctx, buf)? {
+            Poll::Ready(n) => Ok(n),
+            Poll::Pending => Err(io::Error::from(io::ErrorKind::WouldBlock)),
         })
     }
 }
@@ -196,13 +193,10 @@ where
     fn poll_read(
         mut self: Pin<&mut Self>,
         ctx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        self.with_context(ctx, |s| match cvt(s.read(buf.initialize_unfilled()))? {
-            Poll::Ready(nread) => {
-                buf.advance(nread);
-                Poll::Ready(Ok(()))
-            }
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        self.with_context(ctx, |s| match cvt(s.read(buf))? {
+            Poll::Ready(nread) => Poll::Ready(Ok(nread)),
             Poll::Pending => Poll::Pending,
         })
     }
@@ -224,7 +218,7 @@ where
         self.with_context(ctx, |s| cvt(s.flush()))
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<io::Result<()>> {
+    fn poll_close(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<io::Result<()>> {
         match self.with_context(ctx, |s| s.shutdown()) {
             Ok(ShutdownResult::Sent) | Ok(ShutdownResult::Received) => {}
             Err(ref e) if e.code() == ErrorCode::ZERO_RETURN => {}
@@ -238,7 +232,7 @@ where
             }
         }
 
-        Pin::new(&mut self.0.get_mut().stream).poll_shutdown(ctx)
+        Pin::new(&mut self.0.get_mut().stream).poll_close(ctx)
     }
 }
 

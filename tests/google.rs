@@ -1,11 +1,11 @@
+use async_std::net::{TcpListener, TcpStream};
+use async_std::prelude::*;
 use futures::future;
 use openssl::ssl::{SslAcceptor, SslConnector, SslFiletype, SslMethod};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
-use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
 
-#[tokio::test]
+#[async_std::test]
 async fn google() {
     let addr = "google.com:443".to_socket_addrs().unwrap().next().unwrap();
     let stream = TcpStream::connect(&addr).await.unwrap();
@@ -15,7 +15,7 @@ async fn google() {
         .build()
         .configure()
         .unwrap();
-    let mut stream = tokio_openssl::connect(config, "google.com", stream)
+    let mut stream = futures_openssl::connect(config, "google.com", stream)
         .await
         .unwrap();
 
@@ -31,7 +31,7 @@ async fn google() {
     assert!(response.ends_with("</html>") || response.ends_with("</HTML>"));
 }
 
-#[tokio::test]
+#[async_std::test]
 async fn server() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -47,7 +47,7 @@ async fn server() {
         let acceptor = acceptor.build();
 
         let stream = listener.accept().await.unwrap().0;
-        let mut stream = tokio_openssl::accept(&acceptor, stream).await.unwrap();
+        let mut stream = futures_openssl::accept(&acceptor, stream).await.unwrap();
 
         let mut buf = [0; 4];
         stream.read_exact(&mut buf).await.unwrap();
@@ -55,7 +55,7 @@ async fn server() {
 
         stream.write_all(b"jkl;").await.unwrap();
 
-        future::poll_fn(|ctx| Pin::new(&mut stream).poll_shutdown(ctx))
+        future::poll_fn(|ctx| Pin::new(&mut stream).poll_close(ctx))
             .await
             .unwrap()
     };
@@ -66,7 +66,7 @@ async fn server() {
         let config = connector.build().configure().unwrap();
 
         let stream = TcpStream::connect(&addr).await.unwrap();
-        let mut stream = tokio_openssl::connect(config, "localhost", stream)
+        let mut stream = futures_openssl::connect(config, "localhost", stream)
             .await
             .unwrap();
 

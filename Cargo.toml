@@ -1,5 +1,5 @@
 [package]
-name = "tokio-openssl"
+name = "futures-openssl"
 version = "0.5.0"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 license = "MIT/Apache-2.0"
@@ -14,8 +14,7 @@ An implementation of SSL streams for Tokio backed by OpenSSL
 [dependencies]
 openssl = "0.10.30"
 openssl-sys = "0.9.58"
-tokio = "0.3"
+futures = "0.3"
 
 [dev-dependencies]
-futures = "0.3"
-tokio = { version = "0.3", features = ["full"] }
+async-std = { version = "1.7", features = [ "attributes" ] }
